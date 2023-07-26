@@ -3,6 +3,7 @@ package com.conversa
 import com.conversa.behaviors.ChatBehavior.*
 import com.conversa.behaviors.ChatBehavior.ChatCommand.*
 import com.conversa.config.ShardcakeConfig
+import com.conversa.db.RedisRepository
 import com.conversa.models.ChatError
 import com.conversa.models.Message
 import com.conversa.session.Session
@@ -45,7 +46,9 @@ object ChatApp extends ZIOAppDefault {
       _ <- messenger
         .sendMessage("chat1", user3, "Yeah, same.")
         .mapError(e => new Throwable(e.message))
-      _ <- messenger.getMessages("chat1").foreach(msg => Console.printLine(s"${msg.sender}: ${msg.content}"))
+      _ <- messenger
+        .getMessages("chat1")
+        .foreach(msg => Console.printLine(s"${msg.sender}: ${msg.content}"))
       _ <- ZIO.never
     } yield ()
   }
@@ -64,6 +67,7 @@ object ChatApp extends ZIOAppDefault {
         GrpcPods.live,
         Sharding.live,
         GrpcShardingService.live,
-        ShardcakeSession.make(List.empty[Message])
+        ShardcakeSession.make(List.empty[Message]),
+        RedisRepository.live
       )
 }

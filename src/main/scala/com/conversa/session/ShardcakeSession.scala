@@ -13,7 +13,7 @@ import zio.stream.*
 case class ShardcakeSession(
     sharding: com.devsisters.shardcake.Sharding,
     messages: Ref[List[Message]],
-    subscribers: Hub[List[Message]]
+    subscribers: Hub[Message]
 ) extends Session {
   val conversationShard = sharding.messenger[ChatCommand](ChatBehavior.Conversation)
 
@@ -27,24 +27,22 @@ case class ShardcakeSession(
       conversationId: ConversationId,
       sender: String,
       content: String
-  ): IO[ChatError, List[Message]] = {
+  ): IO[ChatError, Message] = {
     (for {
-      timestamp <- ZIO.succeed(java.time.Instant.now.toEpochMilli.toDouble)
       res <- conversationShard
-        .send[Either[ChatError, List[String]]](conversationId)(
+        .send[Either[ChatError, String]](conversationId)(
           ChatCommand.SendMessage(sender, content, _)
         )
         .orDie
-      rawMessages <- ZIO.fromEither(res)
-      parsedMessages <- ZIO.foreachPar(rawMessages)(message =>
-        ZIO.fromEither(message.fromJson[Message]).mapError(e => ChatError.InvalidJson(e))
-      )
-    } yield parsedMessages).tap(added => subscribers.publish(added))
+      rawMessage <- ZIO.fromEither(res)
+      message <- ZIO.fromEither(rawMessage.fromJson[Message]).mapError(e => ChatError.InvalidJson(e))
+      _ <- messages.update(m => m.takeRight(25) :+ message)
+    } yield message).tap(added => subscribers.publish(added))
   }
 
   override def conversationEvents(
       connectionId: ConversationId
-  ): ZStream[Any, Nothing, List[Message]] =
+  ): ZStream[Any, Nothing, Message] =
     ZStream.scoped(subscribers.subscribe).flatMap(ZStream.fromQueue(_))
 
   override def getMessages(connectionId: ConversationId): ZStream[Any, Throwable, Message] =
@@ -64,8 +62,7 @@ object ShardcakeSession {
     for {
       sharding <- ZIO.service[Sharding]
       messages <- Ref.make(initial)
-      subscribers <- Hub.unbounded[List[Message]]
-      // redis <- ZIO.service[RedisCommands[Task, String, String]]
+      subscribers <- Hub.unbounded[Message]
     } yield ShardcakeSession(sharding, messages, subscribers)
   }
 }
