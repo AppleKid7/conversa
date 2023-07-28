@@ -8,8 +8,15 @@ import zio.*
 import zio.json.*
 import zio.stream.*
 
-final case class RedisRepository(redis: RedisCommands[Task, String, String])
+final case class RedisChatMessageRepository(redis: RedisCommands[Task, String, String])
     extends ChatMessageRepository {
+  override def createConversation(conversationId: String): Task[Unit] =
+    redis.lPush("conversation", conversationId).unit
+    // redis.setBit(s"conversation:$conversationId:members", 0, 0).unit
+
+  override def getConversation(conversationId: String): Task[List[String]] =
+    redis.zRevRange(s"conversation:$conversationId:members", 0, -1)
+
   override def getAllMessages(conversationId: String): ZStream[Any, Nothing, String] =
     ZStream
       .fromIterableZIO(
@@ -28,10 +35,10 @@ final case class RedisRepository(redis: RedisCommands[Task, String, String])
     ) *> ZIO.succeed(msg)
   }
 }
-object RedisRepository {
+object RedisChatMessageRepository {
   val live = ZLayer.scoped {
     for {
       redis <- ZIO.service[RedisCommands[Task, String, String]]
-    } yield RedisRepository(redis)
+    } yield RedisChatMessageRepository(redis)
   }
 }

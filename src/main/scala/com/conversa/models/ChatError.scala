@@ -7,5 +7,6 @@ enum ChatError {
   case InvalidJson(message: String)
   case NetworkReadError(message: String)
   case ShardcakeConnectionError(message: String)
+  case DatabaseConnectionError(message: String)
   def message: String
 }

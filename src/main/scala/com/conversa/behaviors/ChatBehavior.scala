@@ -19,6 +19,10 @@ import zio.{Dequeue, Promise, RIO, Random, Task, ZIO}
 
 object ChatBehavior {
   enum ChatCommand {
+    case CreateConversation(
+        conversationId: String,
+        replier: Replier[Either[ChatError, Unit]]
+    )
     case SendMessage(
         sender: String,
         content: String,
@@ -50,9 +54,12 @@ object ChatBehavior {
       message: ChatCommand
   ): RIO[Sharding, Unit] =
     message match {
+      case ChatCommand.CreateConversation(conversationId, replier) =>
+        repo.createConversation(conversationId)
+          *> replier.reply(Right(()))
       case ChatCommand.SendMessage(sender, content, replier) => {
         (for {
-          conversation <- redis.zRevRange(s"conversation:$conversationId:participants", 0, -1)
+          conversation <- repo.getConversation(conversationId)
           timestamp = java.time.Instant.now.toEpochMilli.toDouble
           json =
             s"""{"conversationId": "$conversationId", "timestamp": $timestamp, "sender": "$sender", "content": "$content"}"""

@@ -3,7 +3,7 @@ package com.conversa
 import com.conversa.behaviors.ChatBehavior.*
 import com.conversa.behaviors.ChatBehavior.ChatCommand.*
 import com.conversa.config.ShardcakeConfig
-import com.conversa.db.RedisRepository
+import com.conversa.db.RedisChatMessageRepository
 import com.conversa.models.ChatError
 import com.conversa.models.Message
 import com.conversa.session.Session
@@ -33,21 +33,22 @@ object ChatApp extends ZIOAppDefault {
 
   val program: ZIO[Session, Throwable, Unit] = {
     for {
-      messenger <- ZIO.service[Session]
+      session <- ZIO.service[Session]
       user1 <- Random.nextUUID.map(_.toString)
       user2 <- Random.nextUUID.map(_.toString)
       user3 <- Random.nextUUID.map(_.toString)
-      _ <- messenger
-        .sendMessage("chat1", user1, "Hey, what's up")
+      conversationId <- session.createConversation.mapError(e => new Throwable(e.message))
+      _ <- session
+        .sendMessage(conversationId, user1, "Hey, what's up")
         .mapError(e => new Throwable(e.message))
-      _ <- messenger
-        .sendMessage("chat1", user2, "Not much.")
+      _ <- session
+        .sendMessage(conversationId, user2, "Not much.")
         .mapError(e => new Throwable(e.message))
-      _ <- messenger
-        .sendMessage("chat1", user3, "Yeah, same.")
+      _ <- session
+        .sendMessage(conversationId, user3, "Yeah, same.")
         .mapError(e => new Throwable(e.message))
-      _ <- messenger
-        .getMessages("chat1")
+      _ <- session
+        .getMessages(conversationId)
         .foreach(msg => Console.printLine(s"${msg.sender}: ${msg.content}"))
       _ <- ZIO.never
     } yield ()
@@ -68,6 +69,6 @@ object ChatApp extends ZIOAppDefault {
         Sharding.live,
         GrpcShardingService.live,
         ShardcakeSession.make(List.empty[Message]),
-        RedisRepository.live
+        RedisChatMessageRepository.live
       )
 }

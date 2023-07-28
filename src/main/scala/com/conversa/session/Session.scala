@@ -8,7 +8,6 @@ import zio.stream.ZStream
 
 trait Session {
   def createConversation: IO[ChatError, ConversationId]
-  // def getAllMessages(connectionId: ConnectionId): IO[ChatError, List[Message]]
   def sendMessage(
       connectionId: ConversationId,
       sender: String,
@@ -21,8 +20,6 @@ trait Session {
 object Session {
   def createConversation: ZIO[Session, ChatError, ConversationId] =
     ZIO.environmentWithZIO[Session](_.get.createConversation)
-  // def getAllMessages(connectionId: ConnectionId): ZIO[Session, ChatError, List[Message]] =
-  //   ZIO.environmentWithZIO[Session](_.get.getAllMessages(connectionId))
   def sendMessage(
       connectionId: ConversationId,
       sender: String,
