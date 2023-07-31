@@ -2,6 +2,7 @@ package com.conversa
 
 import com.conversa.behaviors.ChatBehavior.*
 import com.conversa.behaviors.ChatBehavior.ChatCommand.*
+import com.conversa.config.ChatConfig
 import com.conversa.config.ShardcakeConfig
 import com.conversa.db.RedisChatMessageRepository
 import com.conversa.models.ChatError
@@ -31,30 +32,41 @@ object ChatApp extends ZIOAppDefault {
       _ <- Sharding.registerScoped
     } yield ()
 
-  val program: ZIO[Session, Throwable, Unit] = {
+  val program: ZIO[Session, Throwable, Unit] =
     for {
       session <- ZIO.service[Session]
       user1 <- Random.nextUUID.map(_.toString)
       user2 <- Random.nextUUID.map(_.toString)
       user3 <- Random.nextUUID.map(_.toString)
+      user4 <- Random.nextUUID.map(_.toString)
       conversationId <- session.createConversation.mapError(e => new Throwable(e.message))
+      _ <- session.joinConversation(conversationId, user1).mapError(e => new Throwable(e.message))
+      _ <- session.joinConversation(conversationId, user2).mapError(e => new Throwable(e.message))
+      _ <- session.joinConversation(conversationId, user3).mapError(e => new Throwable(e.message))
       _ <- session
         .sendMessage(conversationId, user1, "Hey, what's up")
         .mapError(e => new Throwable(e.message))
+        .debug
       _ <- session
         .sendMessage(conversationId, user2, "Not much.")
         .mapError(e => new Throwable(e.message))
+        .debug
       _ <- session
         .sendMessage(conversationId, user3, "Yeah, same.")
         .mapError(e => new Throwable(e.message))
+        .debug
+      _ <- session
+        .sendMessage(conversationId, user4, "Hi, I'm error!")
+        .tapError(e => Console.printError(e.message))
+        .fold(e => (), value => value)
+        .debug
       _ <- session
         .getMessages(conversationId)
         .foreach(msg => Console.printLine(s"${msg.sender}: ${msg.content}"))
       _ <- ZIO.never
     } yield ()
-  }
 
-  def run: Task[Unit] =
+  def run: Task[Unit] = ZIO.config[ChatConfig](ChatConfig.config).flatMap { chatConfig =>
     ZIO
       .scoped(register *> program)
       .provide(
@@ -68,7 +80,8 @@ object ChatApp extends ZIOAppDefault {
         GrpcPods.live,
         Sharding.live,
         GrpcShardingService.live,
-        ShardcakeSession.make(List.empty[Message]),
+        ShardcakeSession.make(List.empty[Message], chatConfig.maxNumberOfMembers),
         RedisChatMessageRepository.live
       )
+  }
 }

@@ -1,6 +1,5 @@
 package com.conversa.behaviors
 
-import com.conversa.config.ChatConfig
 import com.conversa.db.ChatMessageRepository
 import com.conversa.models.ChatError
 import com.conversa.models.ConversationId
@@ -20,7 +19,11 @@ import zio.{Dequeue, Promise, RIO, Random, Task, ZIO}
 object ChatBehavior {
   enum ChatCommand {
     case CreateConversation(
-        conversationId: String,
+        replier: Replier[Either[ChatError, Unit]]
+    )
+    case JoinConversation(
+        memberId: String,
+        maxNumberOfMembers: Int,
         replier: Replier[Either[ChatError, Unit]]
     )
     case SendMessage(
@@ -54,23 +57,52 @@ object ChatBehavior {
       message: ChatCommand
   ): RIO[Sharding, Unit] =
     message match {
-      case ChatCommand.CreateConversation(conversationId, replier) =>
+      case ChatCommand.CreateConversation(replier) =>
         repo.createConversation(conversationId)
           *> replier.reply(Right(()))
-      case ChatCommand.SendMessage(sender, content, replier) => {
-        (for {
-          conversation <- repo.getConversation(conversationId)
-          timestamp = java.time.Instant.now.toEpochMilli.toDouble
-          json =
-            s"""{"conversationId": "$conversationId", "timestamp": $timestamp, "sender": "$sender", "content": "$content"}"""
-          result <- repo.storeMessage(conversationId, json, timestamp)
-        } yield result).flatMap(msg => replier.reply(Right(msg)))
-      }
+      case ChatCommand.JoinConversation(memberId, maxNumberOfMembers, replier) =>
+        repo.conversationExists(conversationId).flatMap { conversationExists =>
+          if (conversationExists) {
+            repo.getConversationMembers(conversationId).flatMap { members =>
+              if (members.contains(memberId))
+                replier
+                  .reply(Left(ChatError.AlreadyJoined("You've already joined this conversation")))
+              else if (members.size >= maxNumberOfMembers)
+                replier.reply(
+                  Left(
+                    ChatError.ChatFull("You can no longer join this Match!", maxNumberOfMembers)
+                  )
+                )
+              else
+                repo.addMemberToConversation(conversationId, memberId) *> replier.reply(Right(()))
+            }
+          } else
+            replier.reply(
+              Left(
+                ChatError.InvalidConversationId(s"conversation $conversationId does not exist")
+              )
+            )
+        }
+      case ChatCommand.SendMessage(sender, content, replier) =>
+        repo.getConversationMembers(conversationId) flatMap { members =>
+          if (members.contains(sender)) {
+            val timestamp = java.time.Instant.now.toEpochMilli.toDouble
+            val json =
+              s"""{"conversationId": "$conversationId", "timestamp": $timestamp, "sender": "$sender", "content": "$content"}"""
+            repo.storeMessage(conversationId, json, timestamp) *> replier.reply(Right(json))
+          } else
+            replier.reply(
+              Left(
+                ChatError.InvalidConversationId(
+                  s"user $sender does not belong in conversation $conversationId"
+                )
+              )
+            )
+        }
       case ChatCommand.GetMessages(replier) =>
         replier.replyStream(
           repo.getAllMessages(conversationId)
         )
       case ChatCommand.Terminate(p) => p.succeed(()) *> ZIO.interrupt
     }
-
 }

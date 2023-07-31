@@ -11,17 +11,21 @@ import zio.stream.*
 final case class RedisChatMessageRepository(redis: RedisCommands[Task, String, String])
     extends ChatMessageRepository {
   override def createConversation(conversationId: String): Task[Unit] =
-    redis.lPush("conversation", conversationId).unit
-    // redis.setBit(s"conversation:$conversationId:members", 0, 0).unit
+    redis.set(conversationId, "")
 
-  override def getConversation(conversationId: String): Task[List[String]] =
-    redis.zRevRange(s"conversation:$conversationId:members", 0, -1)
+  override def conversationExists(conversationId: String): Task[Boolean] =
+    redis.exists(conversationId)
+
+  override def addMemberToConversation(conversationId: String, memberId: String): Task[Unit] =
+    redis.lPush(s"$conversationId:members", memberId).unit
+
+  override def getConversationMembers(conversationId: String): Task[Set[String]] =
+    redis.lRange(s"$conversationId:members", 0, -1).map(_.toSet)
 
   override def getAllMessages(conversationId: String): ZStream[Any, Nothing, String] =
-    ZStream
-      .fromIterableZIO(
-        redis.zRevRange(s"conversation:$conversationId:messages", 0, -1).orDie
-      )
+    ZStream.fromIterableZIO(
+      redis.zRevRange(s"$conversationId:messages", 0, -1).orDie
+    )
 
   override def storeMessage(
       conversationId: String,
@@ -29,7 +33,7 @@ final case class RedisChatMessageRepository(redis: RedisCommands[Task, String, S
       timestamp: Double
   ): Task[String] = {
     redis.zAdd(
-      s"conversation:$conversationId:messages",
+      s"$conversationId:messages",
       args = None,
       ScoreWithValue(Score(timestamp), msg)
     ) *> ZIO.succeed(msg)

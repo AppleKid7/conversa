@@ -5,6 +5,7 @@ import com.conversa.behaviors.ChatBehavior.ChatCommand
 import com.conversa.models.ChatError
 import com.conversa.models.ConversationId
 import com.conversa.models.Message
+import com.conversa.models.UserId
 import com.devsisters.shardcake.Sharding
 import zio.*
 import zio.json.*
@@ -12,6 +13,7 @@ import zio.stream.*
 
 case class ShardcakeSession(
     sharding: com.devsisters.shardcake.Sharding,
+    maxNumberOfMembers: Int,
     messages: Ref[List[Message]],
     subscribers: Hub[Message]
 ) extends Session {
@@ -20,13 +22,25 @@ case class ShardcakeSession(
   override def createConversation: IO[ChatError, String] =
     for {
       uuid <- Random.nextUUID
-      conversationId = s"chat-${uuid.toString()}" // TODO newtype
+      conversationId = s"conversations:chat-${uuid.toString()}" // TODO newtype
       _ <- conversationShard
         .send[Either[ChatError, Unit]](conversationId)(
-          ChatCommand.CreateConversation(conversationId, _)
+          ChatCommand.CreateConversation(_)
         )
         .mapError(e => ChatError.NetworkReadError(e.getMessage()))
     } yield conversationId
+
+  override def joinConversation(
+      conversationId: ConversationId,
+      memberId: UserId
+  ): IO[ChatError, Unit] =
+    for {
+      res <- conversationShard
+        .send[Either[ChatError, Unit]](conversationId)(
+          ChatCommand.JoinConversation(memberId, maxNumberOfMembers, _)
+        )
+        .mapError(e => ChatError.NetworkReadError(e.getMessage()))
+    } yield ()
 
   override def sendMessage(
       conversationId: ConversationId,
@@ -68,12 +82,13 @@ case class ShardcakeSession(
 }
 object ShardcakeSession {
   def make(
-      initial: List[Message]
+      initial: List[Message],
+      maxNumberOfMembers: Int
   ) = ZLayer.scoped {
     for {
       sharding <- ZIO.service[Sharding]
       messages <- Ref.make(initial)
       subscribers <- Hub.unbounded[Message]
-    } yield ShardcakeSession(sharding, messages, subscribers)
+    } yield ShardcakeSession(sharding, maxNumberOfMembers, messages, subscribers)
   }
 }
