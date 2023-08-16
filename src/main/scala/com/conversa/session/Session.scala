@@ -15,6 +15,11 @@ trait Session {
       sender: String,
       content: String
   ): IO[ChatError, Message]
+  def sendMessageStream(
+      connectionId: ConversationId,
+      sender: String,
+      content: String
+  ): IO[ChatError, Message]
   def conversationEvents(connectionId: ConversationId): ZStream[Any, Nothing, Message]
   def getMessages(connectionId: ConversationId): ZStream[Any, Throwable, Message]
 }
@@ -34,6 +39,12 @@ object Session {
       content: String
   ): ZIO[Session, ChatError, Message] =
     ZIO.environmentWithZIO[Session](_.get.sendMessage(connectionId, sender, content))
+  def sendMessageStream(
+      connectionId: ConversationId,
+      sender: String,
+      content: String
+  ): ZIO[Session, ChatError, Message] =
+    ZIO.environmentWithZIO[Session](_.get.sendMessageStream(connectionId, sender, content))
   def conversationEvents(connectionId: ConversationId): ZStream[Session, Throwable, Message] =
     ZStream.environmentWithStream[Session](_.get.conversationEvents(connectionId))
   def getMessages(connectionId: ConversationId) =

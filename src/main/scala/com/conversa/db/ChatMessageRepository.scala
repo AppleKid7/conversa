@@ -8,6 +8,7 @@ trait ChatMessageRepository {
   def createConversation(conversationId: String): Task[Unit]
   def conversationExists(conversationId: String): Task[Boolean]
   def getConversationMembers(conversationId: String): Task[Set[String]]
+  def getMembersStream(conversationId: String): ZStream[Any, Nothing, String]
   def addMemberToConversation(conversationId: String, memberId: String): Task[Unit]
   def getAllMessages(conversationId: String): ZStream[Any, Nothing, String]
   def storeMessage(conversationId: String, msg: String, timestamp: Double): Task[String]
@@ -21,6 +22,8 @@ object ChatMessageRepository {
     ZIO.environmentWithZIO[ChatMessageRepository](_.get.addMemberToConversation(conversationId, memberId))
   def getConversationMembers(conversationId: String): RIO[ChatMessageRepository, Set[String]] =
     ZIO.environmentWithZIO[ChatMessageRepository](_.get.getConversationMembers(conversationId))
+  def getMembersStream(conversationId: String): ZStream[ChatMessageRepository, Nothing, String] =
+    ZStream.environmentWithStream[ChatMessageRepository](_.get.getMembersStream(conversationId))
   def getAllMessages(conversationId: String): ZStream[ChatMessageRepository, Nothing, String] = 
     ZStream.environmentWithStream[ChatMessageRepository](_.get.getAllMessages(conversationId))
   def storeMessage(conversationId: String, msg: String, timestamp: Double): RIO[ChatMessageRepository, String] =

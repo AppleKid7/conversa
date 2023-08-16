@@ -38,6 +38,11 @@ final case class RedisChatMessageRepository(redis: RedisCommands[Task, String, S
       ScoreWithValue(Score(timestamp), msg)
     ) *> ZIO.succeed(msg)
   }
+
+  override def getMembersStream(conversationId: String): ZStream[Any, Nothing, String] =
+    ZStream.fromIterableZIO(
+      redis.lRange(s"$conversationId:members", 0, -1).orDie
+    )
 }
 object RedisChatMessageRepository {
   val live = ZLayer.scoped {

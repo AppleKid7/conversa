@@ -1,14 +1,18 @@
 import NativePackagerHelper._
 
 lazy val scala3Version = "3.3.0"
-lazy val shardCakeVersion = "2.0.6+12-20ca3e5c-SNAPSHOT" // "2.0.6"
+lazy val shardCakeVersion = "2.1.0" // "2.0.6"
 lazy val zioVersion = "2.0.15" // 2.0.12
+lazy val zioAWSVersion = "6.20.103.1"
 lazy val zioConfigVersion = "4.0.0-RC16"
 lazy val zioHttpVersion = "3.0.0-RC2" // 3.0.0-RC1
 lazy val zioJsonVersion = "0.5.0"
 lazy val testContainersVersion = "0.40.17"
 
 lazy val generalDeps = Seq(
+  "dev.zio" %% "zio-aws-core" % zioAWSVersion,
+  "dev.zio" %% "zio-aws-dynamodb" % zioAWSVersion,
+  "dev.zio" %% "zio-aws-netty" % zioAWSVersion,
   "dev.zio" %% "zio-streams" % zioVersion,
   "dev.zio" %% "zio-test-junit" % zioVersion,
   "dev.zio" %% "zio-json" % zioJsonVersion,
@@ -39,9 +43,7 @@ lazy val root = project
     name := "Conversa",
     organization := "com.conversa",
     version := "0.1.0-SNAPSHOT",
-
     scalaVersion := scala3Version,
-
     scalacOptions ++= Seq(
       "-Xmax-inlines",
       "64",
@@ -55,7 +57,7 @@ lazy val root = project
       "-Xfatal-warnings",
       "-language:postfixOps",
       "-explain-types",
-      "-Ykind-projector"
+      "-Ykind-projector",
     ),
     Test / unmanagedClasspath += baseDirectory.value / "resources",
     Test / fork := true,

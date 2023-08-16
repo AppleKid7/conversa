@@ -61,6 +61,25 @@ case class ShardcakeSession(
     } yield message).tap(added => subscribers.publish(added))
   }
 
+  override def sendMessageStream(
+      conversationId: ConversationId,
+      sender: String,
+      content: String
+  ): IO[ChatError, Message] = {
+    (for {
+      res <- conversationShard
+        .send[Either[ChatError, String]](conversationId)(
+          ChatCommand.SendMessageStream(sender, content, _)
+        )
+        .orDie
+      rawMessage <- ZIO.fromEither(res)
+      message <- ZIO
+        .fromEither(rawMessage.fromJson[Message])
+        .mapError(e => ChatError.InvalidJson(e))
+      _ <- messages.update(m => m.takeRight(25) :+ message)
+    } yield message).tap(added => subscribers.publish(added))
+  }
+
   override def conversationEvents(
       connectionId: ConversationId
   ): ZStream[Any, Nothing, Message] =

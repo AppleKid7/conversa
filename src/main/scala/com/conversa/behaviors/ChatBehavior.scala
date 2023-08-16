@@ -13,7 +13,7 @@ import scala.collection.{mutable => scm}
 import scala.util.{Failure, Success, Try}
 import zio.config.*
 import zio.json.*
-import zio.stream.ZStream
+import zio.stream.*
 import zio.{Dequeue, Promise, RIO, Random, Task, ZIO}
 
 object ChatBehavior {
@@ -33,6 +33,11 @@ object ChatBehavior {
     )
     case GetMessages(
         replier: StreamReplier[String]
+    )
+    case SendMessageStream(
+        sender: String,
+        content: String,
+        replier: Replier[Either[ChatError, String]]
     )
     case Terminate(p: Promise[Nothing, Unit])
   }
@@ -103,6 +108,30 @@ object ChatBehavior {
         replier.replyStream(
           repo.getAllMessages(conversationId)
         )
+      case ChatCommand.SendMessageStream(sender, content, replier) => {
+        val members = repo.getMembersStream(conversationId)
+        val filterMember: ZPipeline[Any, Nothing, String, String] =
+          ZPipeline.filter[String](s => s == sender)
+        val sendLogic = ZSink.collectAll[String].map { members =>
+          if (members.contains(sender)) {
+            val timestamp = java.time.Instant.now.toEpochMilli.toDouble
+            val json =
+              s"""{"conversationId": "$conversationId", "timestamp": $timestamp, "sender": "$sender", "content": "$content"}"""
+            repo.storeMessage(conversationId, json, timestamp)
+            Right(json)
+          } else
+            Left(
+              ChatError.InvalidConversationId(
+                s"user $sender does not belong in conversation $conversationId"
+              )
+            )
+        }
+        val sendMessage = members.via(filterMember).run(sendLogic)
+        for {
+          result <- sendMessage
+          sendResult <- replier.reply(result)
+        } yield sendResult
+      }
       case ChatCommand.Terminate(p) => p.succeed(()) *> ZIO.interrupt
     }
 }
