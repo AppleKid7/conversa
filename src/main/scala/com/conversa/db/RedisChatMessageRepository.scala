@@ -41,7 +41,7 @@ final case class RedisChatMessageRepository(redis: RedisCommands[Task, String, S
 
   override def getMembersStream(conversationId: String): ZStream[Any, Nothing, String] =
     ZStream.fromIterableZIO(
-      redis.lRange(s"$conversationId:members", 0, -1).orDie
+      redis.lRange(s"$conversationId:members", 0, -1).map(_.toSet).orDie
     )
 }
 object RedisChatMessageRepository {

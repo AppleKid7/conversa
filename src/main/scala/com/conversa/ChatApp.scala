@@ -48,17 +48,16 @@ object ChatApp extends ZIOAppDefault {
         .mapError(e => new Throwable(e.message))
         .debug
       _ <- session
-        .sendMessage(conversationId, user2, "Not much.")
+        .sendMessageStream(conversationId, user2, "Not much.")
         .mapError(e => new Throwable(e.message))
         .debug
       _ <- session
-        .sendMessage(conversationId, user3, "Yeah, same.")
+        .sendMessageStream(conversationId, user3, "Yeah, same.")
         .mapError(e => new Throwable(e.message))
         .debug
       _ <- session
         .sendMessageStream(conversationId, user4, "Hi, I'm error!")
-        .tapError(e => Console.printError(e.message))
-        .fold(e => (), value => value)
+        .fold(e => Console.printError(e.message), value => value)
         .debug
       _ <- session
         .getMessages(conversationId)

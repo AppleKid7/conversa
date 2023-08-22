@@ -11,10 +11,10 @@ import dev.profunktor.redis4cats.effects.Score
 import dev.profunktor.redis4cats.effects.ScoreWithValue
 import scala.collection.{mutable => scm}
 import scala.util.{Failure, Success, Try}
+import zio.*
 import zio.config.*
 import zio.json.*
 import zio.stream.*
-import zio.{Dequeue, Promise, RIO, Random, Task, ZIO}
 
 object ChatBehavior {
   enum ChatCommand {
@@ -109,26 +109,27 @@ object ChatBehavior {
           repo.getAllMessages(conversationId)
         )
       case ChatCommand.SendMessageStream(sender, content, replier) => {
-        val members = repo.getMembersStream(conversationId)
+        val members: ZStream[Any, Nothing, String] = repo.getMembersStream(conversationId)
         val filterMember: ZPipeline[Any, Nothing, String, String] =
           ZPipeline.filter[String](s => s == sender)
+        val timestamp = java.time.Instant.now.toEpochMilli.toDouble
         val sendLogic = ZSink.collectAll[String].map { members =>
           if (members.contains(sender)) {
-            val timestamp = java.time.Instant.now.toEpochMilli.toDouble
             val json =
               s"""{"conversationId": "$conversationId", "timestamp": $timestamp, "sender": "$sender", "content": "$content"}"""
-            repo.storeMessage(conversationId, json, timestamp)
             Right(json)
           } else
             Left(
               ChatError.InvalidConversationId(
-                s"user $sender does not belong in conversation $conversationId"
+                s"user $sender does not belong in conversation $conversationId for members: $members"
               )
             )
         }
         val sendMessage = members.via(filterMember).run(sendLogic)
         for {
           result <- sendMessage
+          either <- ZIO.fromEither(result).mapError(e => new Throwable(e.message))
+          _ <- repo.storeMessage(conversationId, either, timestamp)
           sendResult <- replier.reply(result)
         } yield sendResult
       }
