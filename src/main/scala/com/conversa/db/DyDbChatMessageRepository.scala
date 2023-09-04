@@ -25,14 +25,14 @@ final case class DyDbChatMessageRepository(dydbClient: DynamoDb) extends ChatMes
         )
         .mapError(e => e.toThrowable)
     } yield ()
-  override def conversationExists(conversationId: String): Task[Boolean] =
+  override def entityExists(entityId: String, entityType: String): Task[Boolean] =
     for {
       res <- dydbClient
         .getItem(
           GetItemRequest(
-            tableName = TableName("conversations"),
+            tableName = TableName(entityType),
             key = Map(
-              AttributeName("id") -> AttributeValue(s = Some(StringAttributeValue(conversationId)))
+              AttributeName("id") -> AttributeValue(s = Some(StringAttributeValue(entityId)))
             )
           )
         )
@@ -57,21 +57,22 @@ final case class DyDbChatMessageRepository(dydbClient: DynamoDb) extends ChatMes
   // }
 
   override def getConversationMembers(conversationId: String): Task[Set[String]] =
-     for {
+    for {
       res <- dydbClient
         .query(
           QueryRequest(
             tableName = TableName("conversations"),
             keyConditionExpression = KeyExpression("conversationId = :c_id"),
             expressionAttributeValues = Map(
-              ExpressionAttributeValueVariable(":c_id") -> AttributeValue(s = Some(StringAttributeValue(conversationId)))
+              ExpressionAttributeValueVariable(":c_id") -> AttributeValue(s =
+                Some(StringAttributeValue(conversationId))
+              )
             )
           )
         )
-        .mapError(e => e.toThrowable).runCollect
-      result = res.map { map =>
-        map.get(AttributeName("userId")).get.s.getOrElse("")
-      }
+        .mapError(e => e.toThrowable)
+        .runCollect
+      result = res.map { map => map.get(AttributeName("userId")).get.s.getOrElse("") }
     } yield result.toSet
 
   override def getMembersStream(conversationId: String): ZStream[Any, Nothing, String] =
@@ -82,7 +83,9 @@ final case class DyDbChatMessageRepository(dydbClient: DynamoDb) extends ChatMes
             tableName = TableName("conversations"),
             keyConditionExpression = KeyExpression("conversationId = :c_id"),
             expressionAttributeValues = Map(
-              ExpressionAttributeValueVariable(":c_id") -> AttributeValue(s = Some(StringAttributeValue(conversationId)))
+              ExpressionAttributeValueVariable(":c_id") -> AttributeValue(s =
+                Some(StringAttributeValue(conversationId))
+              )
             )
           )
         )
@@ -92,15 +95,19 @@ final case class DyDbChatMessageRepository(dydbClient: DynamoDb) extends ChatMes
 
   override def addMemberToConversation(conversationId: String, memberId: String): Task[Unit] =
     for {
-      _ <- dydbClient.putItem(
-        PutItemRequest(
-          tableName = TableName("conversations"),
-          item = Map(
-            AttributeName("conversationId") -> AttributeValue(s = Some(StringAttributeValue(conversationId))),
-            AttributeName("userId") -> AttributeValue(s = Some(StringAttributeValue(memberId)))
+      _ <- dydbClient
+        .putItem(
+          PutItemRequest(
+            tableName = TableName("conversations"),
+            item = Map(
+              AttributeName("conversationId") -> AttributeValue(s =
+                Some(StringAttributeValue(conversationId))
+              ),
+              AttributeName("userId") -> AttributeValue(s = Some(StringAttributeValue(memberId)))
+            )
           )
         )
-      ).mapError(e => e.toThrowable)
+        .mapError(e => e.toThrowable)
     } yield ()
   override def getAllMessages(conversationId: String): ZStream[Any, Nothing, String] =
     for {
@@ -110,7 +117,9 @@ final case class DyDbChatMessageRepository(dydbClient: DynamoDb) extends ChatMes
             tableName = TableName("messages"),
             keyConditionExpression = KeyExpression("conversationId = :c_id"),
             expressionAttributeValues = Map(
-              ExpressionAttributeValueVariable(":c_id") -> AttributeValue(s = Some(StringAttributeValue(conversationId)))
+              ExpressionAttributeValueVariable(":c_id") -> AttributeValue(s =
+                Some(StringAttributeValue(conversationId))
+              )
             )
           )
         )
@@ -120,17 +129,61 @@ final case class DyDbChatMessageRepository(dydbClient: DynamoDb) extends ChatMes
 
   override def storeMessage(conversationId: String, msg: String, timestamp: Double): Task[String] =
     for {
-      _ <- dydbClient.putItem(
-        PutItemRequest(
-          tableName = TableName("messages"),
-          item = Map(
-            AttributeName("conversationId") -> AttributeValue(s = Some(StringAttributeValue(conversationId))),
-            AttributeName("content") -> AttributeValue(s = Some(StringAttributeValue(msg))),
-            AttributeName("timestamp") -> AttributeValue(n = Some(NumberAttributeValue(timestamp.toString())))
+      _ <- dydbClient
+        .putItem(
+          PutItemRequest(
+            tableName = TableName("messages"),
+            item = Map(
+              AttributeName("conversationId") -> AttributeValue(s =
+                Some(StringAttributeValue(conversationId))
+              ),
+              AttributeName("content") -> AttributeValue(s = Some(StringAttributeValue(msg))),
+              AttributeName("timestamp") -> AttributeValue(n =
+                Some(NumberAttributeValue(timestamp.toString()))
+              )
+            )
           )
         )
-      ).mapError(e => e.toThrowable)
+        .mapError(e => e.toThrowable)
     } yield msg
+
+  override def getUserPassword(userId: String): Task[Option[String]] =
+    for {
+      res <- dydbClient
+        .getItem(
+          GetItemRequest(
+            tableName = TableName("users"),
+            key = Map(
+              AttributeName("id") -> AttributeValue(s = Some(StringAttributeValue(userId)))
+            ),
+            attributesToGet = Seq(
+              AttributeName("password")
+            )
+          )
+        )
+        .mapError(e => e.toThrowable)
+      item <- res
+        .getItem
+        .orDieWith(_.toThrowable)
+        .map(_.get(AttributeName("password")).get.s.toOption)
+    } yield item
+
+  override def createUser(userId: String, encryptedPassword: String): Task[Unit] =
+    for {
+      _ <- dydbClient
+        .putItem(
+          PutItemRequest(
+            tableName = TableName("users"),
+            item = Map(
+              AttributeName("userId") -> AttributeValue(s = Some(StringAttributeValue(userId))),
+              AttributeName("password") -> AttributeValue(s =
+                Some(StringAttributeValue(encryptedPassword))
+              )
+            )
+          )
+        )
+        .mapError(e => e.toThrowable)
+    } yield ()
 }
 object DyDbChatMessageRepository {
   val live = ZLayer.scoped {

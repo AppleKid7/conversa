@@ -8,13 +8,14 @@ import zio.*
 import zio.json.*
 import zio.stream.*
 
-final case class RedisChatMessageRepository(redis: RedisCommands[Task, String, String])
-    extends ChatMessageRepository {
+final case class RedisChatMessageRepository(
+    redis: RedisCommands[Task, String, String]
+) extends ChatMessageRepository {
   override def createConversation(conversationId: String): Task[Unit] =
-    redis.set(conversationId, "")
+    redis.set(s"conversations:$conversationId", "")
 
-  override def conversationExists(conversationId: String): Task[Boolean] =
-    redis.exists(conversationId)
+  override def entityExists(entityId: String, entityType: String): Task[Boolean] =
+    redis.exists(s"$entityType:$entityId")
 
   override def addMemberToConversation(conversationId: String, memberId: String): Task[Unit] =
     redis.lPush(s"$conversationId:members", memberId).unit
@@ -43,6 +44,12 @@ final case class RedisChatMessageRepository(redis: RedisCommands[Task, String, S
     ZStream.fromIterableZIO(
       redis.lRange(s"$conversationId:members", 0, -1).map(_.toSet).orDie
     )
+
+  override def createUser(userId: String, encryptedPassword: String): Task[Unit] =
+    redis.set(s"users:$userId", encryptedPassword)
+
+  override def getUserPassword(userId: String): Task[Option[String]] =
+    redis.get(s"users:$userId")
 }
 object RedisChatMessageRepository {
   val live = ZLayer.scoped {

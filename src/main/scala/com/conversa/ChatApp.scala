@@ -14,6 +14,7 @@ import com.devsisters.shardcake.interfaces.Serialization
 import dev.profunktor.redis4cats.RedisCommands
 import zio.config.typesafe.TypesafeConfigProvider
 import zio.{Config => _, _}
+import zio.crypto.hash.Hash
 
 object ChatApp extends ZIOAppDefault {
   override val bootstrap: ZLayer[ZIOAppArgs, Any, Any] =
@@ -80,7 +81,8 @@ object ChatApp extends ZIOAppDefault {
         Sharding.live,
         GrpcShardingService.live,
         ShardcakeSession.make(List.empty[Message], chatConfig.maxNumberOfMembers),
-        RedisChatMessageRepository.live
+        RedisChatMessageRepository.live,
+        Hash.live
       )
   }
 }

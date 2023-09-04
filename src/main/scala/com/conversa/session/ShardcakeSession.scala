@@ -7,17 +7,33 @@ import com.conversa.models.ConversationId
 import com.conversa.models.Message
 import com.conversa.models.UserId
 import com.devsisters.shardcake.Sharding
+import java.nio.charset.StandardCharsets.US_ASCII
 import zio.*
+import zio.crypto.hash.*
+import zio.crypto.hash.HashAlgorithm.SHA512
 import zio.json.*
 import zio.stream.*
 
 case class ShardcakeSession(
     sharding: com.devsisters.shardcake.Sharding,
+    hash: Hash,
     maxNumberOfMembers: Int,
     messages: Ref[List[Message]],
     subscribers: Hub[Message]
 ) extends Session {
-  val conversationShard = sharding.messenger[ChatCommand](ChatBehavior.Conversation)
+  lazy val conversationShard = sharding.messenger[ChatCommand](ChatBehavior.Conversation)
+
+  override def createUser(conversationId: String, username: String, plainPassword: String) =
+    for {
+      digest <- ZIO.attempt(hash.hash[HashAlgorithm.SHA512](
+        m = plainPassword,
+        charset = US_ASCII
+      )).orDie
+      result <- conversationShard.send[Either[ChatError, Unit]](conversationId)(
+        ChatCommand.CreateUser(username, digest.value, _)
+      ).orDie
+      either <- ZIO.fromEither(result).mapError(e => ChatError.NetworkReadError(e.message))
+    } yield either
 
   override def createConversation: IO[ChatError, String] =
     for {
@@ -98,6 +114,19 @@ case class ShardcakeSession(
           )
         )
     )
+
+  override def checkPassword(connectionId: String, username: String, plainPassword: String): IO[ChatError, Boolean] =
+    for {
+      result <- conversationShard.send[Either[ChatError, String]](connectionId)(
+        ChatCommand.GetUser(username, _)
+      ).orDie
+      digest <- ZIO.fromEither(result).mapError(e => ChatError.NetworkReadError(e.message))
+      verified <- ZIO.attempt(hash.verify[HashAlgorithm.SHA512](
+        m = plainPassword,
+        digest = MessageDigest(digest),
+        charset = US_ASCII
+      )).orDie
+    } yield verified
 }
 object ShardcakeSession {
   def make(
@@ -106,8 +135,9 @@ object ShardcakeSession {
   ) = ZLayer.scoped {
     for {
       sharding <- ZIO.service[Sharding]
+      hash <- ZIO.service[Hash]
       messages <- Ref.make(initial)
       subscribers <- Hub.unbounded[Message]
-    } yield ShardcakeSession(sharding, maxNumberOfMembers, messages, subscribers)
+    } yield ShardcakeSession(sharding, hash, maxNumberOfMembers, messages, subscribers)
   }
 }
