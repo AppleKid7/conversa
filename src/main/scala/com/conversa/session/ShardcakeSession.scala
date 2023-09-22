@@ -7,33 +7,17 @@ import com.conversa.models.ConversationId
 import com.conversa.models.Message
 import com.conversa.models.UserId
 import com.devsisters.shardcake.Sharding
-import java.nio.charset.StandardCharsets.US_ASCII
 import zio.*
-import zio.crypto.hash.*
-import zio.crypto.hash.HashAlgorithm.SHA512
 import zio.json.*
 import zio.stream.*
 
 case class ShardcakeSession(
     sharding: com.devsisters.shardcake.Sharding,
-    hash: Hash,
     maxNumberOfMembers: Int,
     messages: Ref[List[Message]],
     subscribers: Hub[Message]
 ) extends Session {
   lazy val conversationShard = sharding.messenger[ChatCommand](ChatBehavior.Conversation)
-
-  override def createUser(conversationId: String, username: String, plainPassword: String) =
-    for {
-      digest <- ZIO.attempt(hash.hash[HashAlgorithm.SHA512](
-        m = plainPassword,
-        charset = US_ASCII
-      )).orDie
-      result <- conversationShard.send[Either[ChatError, Unit]](conversationId)(
-        ChatCommand.CreateUser(username, digest.value, _)
-      ).orDie
-      either <- ZIO.fromEither(result).mapError(e => ChatError.NetworkReadError(e.message))
-    } yield either
 
   override def createConversation: IO[ChatError, String] =
     for {
@@ -88,10 +72,15 @@ case class ShardcakeSession(
           ChatCommand.SendMessageStream(sender, content, _)
         )
         .orDie
-      rawMessage <- ZIO.fromEither(res)
-      message <- ZIO
-        .fromEither(rawMessage.fromJson[Message])
-        .mapError(e => ChatError.InvalidJson(e))
+      // rawMessage <- ZIO.fromEither(res)
+      // message <- ZIO
+      //   .fromEither(rawMessage.fromJson[Message])
+      //   .mapError(e => ChatError.InvalidJson(e))
+      message <- res match {
+        case Right(value) =>
+          ZIO.fromEither(value.fromJson[Message]).mapError(e => ChatError.InvalidJson(e))
+        case Left(error) => ZIO.fail(error)
+      }
       _ <- messages.update(m => m.takeRight(25) :+ message)
     } yield message).tap(added => subscribers.publish(added))
   }
@@ -114,19 +103,6 @@ case class ShardcakeSession(
           )
         )
     )
-
-  override def checkPassword(connectionId: String, username: String, plainPassword: String): IO[ChatError, Boolean] =
-    for {
-      result <- conversationShard.send[Either[ChatError, String]](connectionId)(
-        ChatCommand.GetUser(username, _)
-      ).orDie
-      digest <- ZIO.fromEither(result).mapError(e => ChatError.NetworkReadError(e.message))
-      verified <- ZIO.attempt(hash.verify[HashAlgorithm.SHA512](
-        m = plainPassword,
-        digest = MessageDigest(digest),
-        charset = US_ASCII
-      )).orDie
-    } yield verified
 }
 object ShardcakeSession {
   def make(
@@ -135,9 +111,8 @@ object ShardcakeSession {
   ) = ZLayer.scoped {
     for {
       sharding <- ZIO.service[Sharding]
-      hash <- ZIO.service[Hash]
       messages <- Ref.make(initial)
       subscribers <- Hub.unbounded[Message]
-    } yield ShardcakeSession(sharding, hash, maxNumberOfMembers, messages, subscribers)
+    } yield ShardcakeSession(sharding, maxNumberOfMembers, messages, subscribers)
   }
 }

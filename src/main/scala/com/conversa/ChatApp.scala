@@ -14,7 +14,6 @@ import com.devsisters.shardcake.interfaces.Serialization
 import dev.profunktor.redis4cats.RedisCommands
 import zio.config.typesafe.TypesafeConfigProvider
 import zio.{Config => _, _}
-import zio.crypto.hash.Hash
 
 object ChatApp extends ZIOAppDefault {
   override val bootstrap: ZLayer[ZIOAppArgs, Any, Any] =
@@ -58,7 +57,9 @@ object ChatApp extends ZIOAppDefault {
         .debug
       _ <- session
         .sendMessageStream(conversationId, user4, "Hi, I'm error!")
-        .fold(e => Console.printError(e.message), value => value)
+        .tapError(e => Console.printError(e.message))
+        .mapError(_ => ())
+        .fold(e => (), value => value)
         .debug
       _ <- session
         .getMessages(conversationId)
@@ -82,7 +83,6 @@ object ChatApp extends ZIOAppDefault {
         GrpcShardingService.live,
         ShardcakeSession.make(List.empty[Message], chatConfig.maxNumberOfMembers),
         RedisChatMessageRepository.live,
-        Hash.live
       )
   }
 }

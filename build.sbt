@@ -5,12 +5,14 @@ lazy val shardCakeVersion = "2.1.0" // "2.0.6"
 lazy val zioVersion = "2.0.15" // 2.0.12
 lazy val zioAWSVersion = "6.20.103.1"
 lazy val zioConfigVersion = "4.0.0-RC16"
-lazy val zioCryptoVersion = "0.0.0+244-3ed85d66-SNAPSHOT"
 lazy val zioHttpVersion = "3.0.0-RC2" // 3.0.0-RC1
 lazy val zioJsonVersion = "0.5.0"
-lazy val testContainersVersion = "0.40.17"
+lazy val testContainersVersion = "1.19.0"
+lazy val testContainersScalaVersion = "0.41.0"
+lazy val ZioTestContainersVersion = "0.10.0"
 
 lazy val generalDeps = Seq(
+  "dev.zio" %% "zio-aws-cognitosync" % zioAWSVersion,
   "dev.zio" %% "zio-aws-core" % zioAWSVersion,
   "dev.zio" %% "zio-aws-dynamodb" % zioAWSVersion,
   "dev.zio" %% "zio-aws-netty" % zioAWSVersion,
@@ -20,7 +22,6 @@ lazy val generalDeps = Seq(
   "dev.zio" %% "zio-config" % zioConfigVersion,
   "dev.zio" %% "zio-config-typesafe" % zioConfigVersion,
   "dev.zio" %% "zio-config-magnolia" % zioConfigVersion,
-  "dev.zio" %% "zio-crypto" % zioCryptoVersion,
   "dev.zio" %% "zio" % zioVersion,
   "dev.zio" %% "zio-test" % zioVersion % Test,
   "dev.zio" %% "zio-test-sbt" % zioVersion % Test
@@ -35,7 +36,10 @@ lazy val shardcakeDeps = Seq(
 )
 
 lazy val testingDeps = Seq(
-  "com.dimafeng" %% "testcontainers-scala-core" % testContainersVersion % Test,
+  "com.dimafeng" %% "testcontainers-scala-core" % testContainersScalaVersion % Test,
+  "com.dimafeng" %% "testcontainers-scala-localstack-v2" % testContainersScalaVersion % Test,
+  // "org.testcontainers" % "testcontainers" % testContainersVersion % Test,
+  // "io.github.scottweaver" %% "zio-2-0-testcontainers-postgresql" % ZioTestContainersVersion % Test,
   "org.scalameta" %% "munit" % "0.7.29" % Test
 )
 

@@ -40,13 +40,13 @@ object ChatBehavior {
         replier: Replier[Either[ChatError, String]]
     )
     case CreateUser(
-      userId: String,
-      password: String,
-      replier: Replier[Either[ChatError, Unit]]
+        userId: String,
+        password: String,
+        replier: Replier[Either[ChatError, Unit]]
     )
     case GetUser(
-      userId: String,
-      replier: Replier[Either[ChatError, String]]
+        userId: String,
+        replier: Replier[Either[ChatError, String]]
     )
     case Terminate(p: Promise[Nothing, Unit])
   }
@@ -122,22 +122,24 @@ object ChatBehavior {
         val filterMember: ZPipeline[Any, Nothing, String, String] =
           ZPipeline.filter[String](s => s == sender)
         val timestamp = java.time.Instant.now.toEpochMilli.toDouble
-        val sendLogic = ZSink.collectAll[String].map { members =>
-          if (members.contains(sender)) {
-            val json =
-              s"""{"conversationId": "$conversationId", "timestamp": $timestamp, "sender": "$sender", "content": "$content"}"""
-            Right(json)
-          } else
-            Left(
-              ChatError.InvalidConversationId(
-                s"user $sender does not belong in conversation $conversationId for members: $members"
+        val sendLogic: ZSink[Any, Nothing, String, Nothing, Either[ChatError, String]] =
+          ZSink.collectAll[String].map { members =>
+            if (members.contains(sender)) {
+              val json =
+                s"""{"conversationId": "$conversationId", "timestamp": $timestamp, "sender": "$sender", "content": "$content"}"""
+              Right(json)
+            } else
+              Left(
+                ChatError.InvalidConversationId(
+                  s"user $sender does not belong in conversation $conversationId for members: $members"
+                )
               )
-            )
-        }
-        val sendMessage = members.via(filterMember).run(sendLogic)
+          }
+        val sendMessage: ZIO[Any, Nothing, Either[ChatError, String]] =
+          members.via(filterMember).run(sendLogic)
         for {
           result <- sendMessage
-          either <- ZIO.fromEither(result).mapError(e => new Throwable(e.message))
+          either <- ZIO.fromEither(result).orDieWith(e => new Throwable(e.message))
           _ <- repo.storeMessage(conversationId, either, timestamp)
           sendResult <- replier.reply(result)
         } yield sendResult
