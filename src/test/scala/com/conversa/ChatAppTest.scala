@@ -58,7 +58,6 @@ object ChatApp extends ZIOAppDefault {
       _ <- session
         .sendMessageStream(conversationId, user4, "Hi, I'm error!")
         .tapError(e => Console.printError(e.message))
-        .mapError(_ => ())
         .fold(e => (), value => value)
         .debug
       _ <- session
