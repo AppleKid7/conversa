@@ -3,7 +3,7 @@ import NativePackagerHelper._
 lazy val scala3Version = "3.3.0"
 lazy val shardCakeVersion = "2.1.0" // "2.0.6"
 lazy val zioVersion = "2.0.15" // 2.0.12
-lazy val zioAWSVersion = "6.20.103.1"
+lazy val zioAWSVersion = "6.20.149.1"
 lazy val zioConfigVersion = "4.0.0-RC16"
 lazy val zioHttpVersion = "3.0.0-RC2" // 3.0.0-RC1
 lazy val zioJsonVersion = "0.5.0"
