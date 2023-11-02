@@ -2,10 +2,7 @@ package integtests.com.conversa
 
 import com.conversa.behaviors.ChatBehavior.*
 import com.conversa.behaviors.ChatBehavior.ChatCommand.*
-import com.conversa.config.ChatConfig
-import com.conversa.config.ShardcakeConfig
 import com.conversa.db.DyDbChatMessageRepository
-import com.conversa.models.ChatError
 import com.conversa.models.Message
 import com.conversa.session.Session
 import com.conversa.session.ShardcakeSession
@@ -20,11 +17,10 @@ import zio.aws.dynamodb.DynamoDb
 import zio.aws.dynamodb.model.*
 import zio.aws.dynamodb.model.TableDescription.ReadOnly
 import zio.aws.dynamodb.model.primitives.*
-import zio.config.typesafe.TypesafeConfigProvider
 import zio.stream.ZSink
 import zio.test.*
 import zio.test.Assertion.*
-import zio.test.TestAspect.{sequential, withLiveClock}
+import zio.test.TestAspect.*
 import zio.{Config => _, _}
 
 object ChatApiSpec extends ZIOSpecDefault {
@@ -42,174 +38,105 @@ object ChatApiSpec extends ZIOSpecDefault {
   private val managerConfig = ZLayer.succeed(ManagerConfig.default.copy(apiPort = 8087))
   private val redisConfig = ZLayer.succeed(RedisConfig.default)
 
-  // private val testConversationsTable: ZIO[DynamoDb & Scope, AwsError, ReadOnly] = {
-  //   for {
-  //     dynamodb <- ZIO.service[DynamoDb]
-  //     conversationsTableName = TableName("conversations")
-  //   } yield ZIO.acquireRelease(
-  //     for {
-  //       _ <- Console.printLine(s"Creating table $conversationsTableName").ignore
-  //       tableData <- DynamoDb.createTable(
-  //         CreateTableRequest(
-  //           tableName = conversationsTableName,
-  //           attributeDefinitions = List(
-  //             AttributeDefinition(
-  //               KeySchemaAttributeName("id"),
-  //               ScalarAttributeType.S
-  //             ),
-  //           ),
-  //           keySchema = List(
-  //             KeySchemaElement(KeySchemaAttributeName("id"), KeyType.HASH)
-  //           ),
-  //           provisionedThroughput = Some(
-  //             ProvisionedThroughput(
-  //               readCapacityUnits = PositiveLongObject(16L),
-  //               writeCapacityUnits = PositiveLongObject(16L)
-  //             )
-  //           ),
-  //           globalSecondaryIndexes = Some(
-  //             List(
-  //               GlobalSecondaryIndex(
-  //                 indexName = IndexName("userIdsIndex"),
-  //                 keySchema = List(
-  //                   KeySchemaElement(KeySchemaAttributeName("userIds"), KeyType.HASH)
-  //                 ),
-  //                 projection = Projection(
-  //                   projectionType = ProjectionType.ALL
-  //                 ),
-  //                 provisionedThroughput = Some(
-  //                   ProvisionedThroughput(
-  //                     readCapacityUnits = PositiveLongObject(16L),
-  //                     writeCapacityUnits = PositiveLongObject(16L)
-  //                   )
-  //                 )
-  //               )
-  //             )
-  //           )
-  //         )
-  //       )
-  //       tableDesc <- tableData.getTableDescription
-  //     } yield tableDesc
-  //   )(tableDescription =>
-  //     tableDescription
-  //       .getTableName
-  //       .flatMap { tableName =>
-  //         for {
-  //           _ <- Console.printLine(s"Deleting table $tableName").ignore
-  //           _ <- DynamoDb.deleteTable(DeleteTableRequest(tableName))
-  //         } yield ()
-  //       }
-  //       .provideEnvironment(ZEnvironment(dynamodb))
-  //       .catchAll(error => ZIO.die(error.toThrowable))
-  //       .unit
-  //   )
-  // }.flatten
-
   private val testConversationsTable: ZIO[DynamoDb & Scope, AwsError, ReadOnly] = {
     for {
       dynamodb <- ZIO.service[DynamoDb]
       conversationsTableName = TableName("conversations")
-    } yield ZIO.acquireRelease(
-      for {
-        _ <- Console.printLine(s"Creating table $conversationsTableName").ignore
-        tableData <- DynamoDb.createTable(
-          CreateTableRequest(
-            tableName = conversationsTableName,
-            attributeDefinitions = List(
-              AttributeDefinition(
-                KeySchemaAttributeName("id"),
-                ScalarAttributeType.S
+      managedTableResource <- ZIO.acquireRelease(
+        for {
+          _ <- Console.printLine(s"Creating table $conversationsTableName").ignore
+          tableData <- DynamoDb.createTable(
+            CreateTableRequest(
+              tableName = conversationsTableName,
+              attributeDefinitions = List(
+                AttributeDefinition(
+                  KeySchemaAttributeName("id"),
+                  ScalarAttributeType.S
+                ),
+                AttributeDefinition(
+                  KeySchemaAttributeName("userId"),
+                  ScalarAttributeType.S
+                )
               ),
-              AttributeDefinition(
-                KeySchemaAttributeName("userId"),
-                ScalarAttributeType.S
-              )
-            ),
-            keySchema = List(
-              KeySchemaElement(KeySchemaAttributeName("id"), KeyType.HASH),
-              KeySchemaElement(KeySchemaAttributeName("userId"), KeyType.RANGE)
-            ),
-            provisionedThroughput = Some(
-              ProvisionedThroughput(
-                readCapacityUnits = PositiveLongObject(16L),
-                writeCapacityUnits = PositiveLongObject(16L)
+              keySchema = List(
+                KeySchemaElement(KeySchemaAttributeName("id"), KeyType.HASH),
+                KeySchemaElement(KeySchemaAttributeName("userId"), KeyType.RANGE)
+              ),
+              provisionedThroughput = Some(
+                ProvisionedThroughput(
+                  readCapacityUnits = PositiveLongObject(16L),
+                  writeCapacityUnits = PositiveLongObject(16L)
+                )
               )
             )
           )
-        )
-        tableDesc <- tableData.getTableDescription
-      } yield tableDesc
-    )(tableDescription =>
-      tableDescription
-        .getTableName
-        .flatMap { tableName =>
-          for {
-            _ <- Console.printLine(s"Deleting table $tableName").ignore
-            _ <- DynamoDb.deleteTable(DeleteTableRequest(tableName))
-          } yield ()
-        }
-        .provideEnvironment(ZEnvironment(dynamodb))
-        .catchAll(error => ZIO.die(error.toThrowable))
-        .unit
-    )
-  }.flatten
+          tableDesc <- tableData.getTableDescription
+        } yield tableDesc
+      )(tableDescription =>
+        tableDescription
+          .getTableName
+          .flatMap { tableName =>
+            for {
+              _ <- Console.printLine(s"Deleting table $tableName").ignore
+              _ <- DynamoDb.deleteTable(DeleteTableRequest(tableName))
+            } yield ()
+          }
+          .provideEnvironment(ZEnvironment(dynamodb))
+          .catchAll(error => ZIO.die(error.toThrowable))
+          .unit
+      )
+    } yield managedTableResource
+  }
 
   private val testMessagesTable: ZIO[DynamoDb & Scope, AwsError, ReadOnly] = {
     for {
       dynamodb <- ZIO.service[DynamoDb]
       conversationsTableName = TableName("messages")
-    } yield ZIO.acquireRelease(
-      for {
-        _ <- Console.printLine(s"Creating table $conversationsTableName").ignore
-        tableData <- DynamoDb.createTable(
-          CreateTableRequest(
-            tableName = conversationsTableName,
-            attributeDefinitions = List(
-              AttributeDefinition(
-                KeySchemaAttributeName("id"),
-                ScalarAttributeType.S
+      managedTableResource <- ZIO.acquireRelease(
+        for {
+          _ <- Console.printLine(s"Creating table $conversationsTableName").ignore
+          tableData <- DynamoDb.createTable(
+            CreateTableRequest(
+              tableName = conversationsTableName,
+              attributeDefinitions = List(
+                AttributeDefinition(
+                  KeySchemaAttributeName("id"),
+                  ScalarAttributeType.S
+                ),
+                AttributeDefinition(
+                  KeySchemaAttributeName("messageId"),
+                  ScalarAttributeType.S
+                ),
               ),
-              AttributeDefinition(
-                KeySchemaAttributeName("messageId"),
-                ScalarAttributeType.S
+              keySchema = List(
+                KeySchemaElement(KeySchemaAttributeName("id"), KeyType.HASH),
+                KeySchemaElement(KeySchemaAttributeName("messageId"), KeyType.RANGE)
               ),
-              // AttributeDefinition(
-              //   KeySchemaAttributeName("content"),
-              //   ScalarAttributeType.S
-              // ),
-              // AttributeDefinition(
-              //   KeySchemaAttributeName("timestamp"),
-              //   ScalarAttributeType.S
-              // )
-            ),
-            keySchema = List(
-              KeySchemaElement(KeySchemaAttributeName("id"), KeyType.HASH),
-              KeySchemaElement(KeySchemaAttributeName("messageId"), KeyType.RANGE)
-            ),
-            provisionedThroughput = Some(
-              ProvisionedThroughput(
-                readCapacityUnits = PositiveLongObject(16L),
-                writeCapacityUnits = PositiveLongObject(16L)
+              provisionedThroughput = Some(
+                ProvisionedThroughput(
+                  readCapacityUnits = PositiveLongObject(16L),
+                  writeCapacityUnits = PositiveLongObject(16L)
+                )
               )
             )
           )
-        )
-        tableDesc <- tableData.getTableDescription
-      } yield tableDesc
-    )(tableDescription =>
-      tableDescription
-        .getTableName
-        .flatMap { tableName =>
-          for {
-            _ <- Console.printLine(s"Deleting table $tableName").ignore
-            _ <- DynamoDb.deleteTable(DeleteTableRequest(tableName))
-          } yield ()
-        }
-        .provideEnvironment(ZEnvironment(dynamodb))
-        .catchAll(error => ZIO.die(error.toThrowable))
-        .unit
-    )
-  }.flatten
+          tableDesc <- tableData.getTableDescription
+        } yield tableDesc
+      )(tableDescription =>
+        tableDescription
+          .getTableName
+          .flatMap { tableName =>
+            for {
+              _ <- Console.printLine(s"Deleting table $tableName").ignore
+              _ <- DynamoDb.deleteTable(DeleteTableRequest(tableName))
+            } yield ()
+          }
+          .provideEnvironment(ZEnvironment(dynamodb))
+          .catchAll(error => ZIO.die(error.toThrowable))
+          .unit
+      )
+    } yield managedTableResource
+  }
 
   def spec: Spec[TestEnvironment with zio.Scope, Any] =
     suite("ChatBehavior end to end test")(
@@ -284,7 +211,7 @@ object ChatApiSpec extends ZIOSpecDefault {
       DyDbChatMessageRepository.live,
       TestLocalstack.dynamoDb,
       TestLocalstack.awsConfig
-    ) @@ sequential @@ withLiveClock
+    ) @@ sequential @@ withLiveClock @@ nondeterministic @@ flaky
 
   // val program: ZIO[Session, Throwable, Unit] =
   //   for {
