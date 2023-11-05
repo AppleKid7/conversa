@@ -9,13 +9,25 @@ import com.conversa.models.ChatError
 import com.conversa.models.Message
 import com.conversa.session.Session
 import com.conversa.session.ShardcakeSession
-import com.devsisters.shardcake._
+import com.devsisters.shardcake.*
 import com.devsisters.shardcake.interfaces.Serialization
 import dev.profunktor.redis4cats.RedisCommands
+import pdi.jwt.{Jwt, JwtAlgorithm, JwtClaim}
 import zio.config.typesafe.TypesafeConfigProvider
+import zio.http.*
+import zio.http.Middleware.bearerAuth
 import zio.{Config => _, _}
+import scala.reflect.ManifestFactory.NothingManifest
 
 object ChatApp extends ZIOAppDefault {
+  val SECRET_KEY = "<secret>"
+
+  private def jwtDecode(token: String): Option[JwtClaim] = {
+    val result = Jwt.decode(token, SECRET_KEY, Seq(JwtAlgorithm.HS512)).toOption
+    println(result)
+    result
+  }
+
   override val bootstrap: ZLayer[ZIOAppArgs, Any, Any] =
     Runtime.setConfigProvider(
       TypesafeConfigProvider.fromResourcePath()
@@ -67,22 +79,32 @@ object ChatApp extends ZIOAppDefault {
       _ <- ZIO.never
     } yield ()
 
-  def run: Task[Unit] = ZIO.config[ChatConfig](ChatConfig.config).flatMap { chatConfig =>
-    ZIO
-      .scoped(register *> program)
-      .provide(
-        config,
-        ZLayer.succeed(GrpcConfig.default),
-        ZLayer.succeed(RedisConfig.default),
-        redis,
-        StorageRedis.live,
-        KryoSerialization.live,
-        ShardManagerClient.liveWithSttp,
-        GrpcPods.live,
-        Sharding.live,
-        GrpcShardingService.live,
-        ShardcakeSession.make(List.empty[Message], chatConfig.maxNumberOfMembers),
-        RedisChatMessageRepository.live,
-      )
-  }
+  def user: HttpApp[Any] = Routes(
+    Method.GET / "hello" / string("name") / "greet" -> handler { (name: String, _: Request) =>
+      Response.text(s"Welcome to the ZIO party! ${name}")
+    }
+  ).toHttpApp @@ bearerAuth(jwtDecode(_).isDefined)
+
+  val app: HttpApp[Any] = user
+
+  // def run: Task[Unit] = ZIO.config[ChatConfig](ChatConfig.config).flatMap { chatConfig =>
+  //   ZIO
+  //     .scoped(register *> program)
+  //     .provide(
+  //       config,
+  //       ZLayer.succeed(GrpcConfig.default),
+  //       ZLayer.succeed(RedisConfig.default),
+  //       redis,
+  //       StorageRedis.live,
+  //       KryoSerialization.live,
+  //       ShardManagerClient.liveWithSttp,
+  //       GrpcPods.live,
+  //       Sharding.live,
+  //       GrpcShardingService.live,
+  //       ShardcakeSession.make(List.empty[Message], chatConfig.maxNumberOfMembers),
+  //       RedisChatMessageRepository.live
+  //     )
+  // }
+
+  override val run = zio.http.Server.serve(app).provide(zio.http.Server.default)
 }
