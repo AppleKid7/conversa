@@ -17,16 +17,13 @@ import zio.config.typesafe.TypesafeConfigProvider
 import zio.http.*
 import zio.http.Middleware.bearerAuth
 import zio.{Config => _, _}
-import scala.reflect.ManifestFactory.NothingManifest
+import scala.util.{Failure, Success}
 
 object ChatApp extends ZIOAppDefault {
-  val SECRET_KEY = "<secret>"
+  val SECRET_KEY = "<secret_key>"
+  val jwksUrl = "<jwks_url>"
 
-  private def jwtDecode(token: String): Option[JwtClaim] = {
-    val result = Jwt.decode(token, SECRET_KEY, Seq(JwtAlgorithm.HS512)).toOption
-    println(result)
-    result
-  }
+  private def jwtValidate(token: String): Boolean = ???
 
   override val bootstrap: ZLayer[ZIOAppArgs, Any, Any] =
     Runtime.setConfigProvider(
@@ -83,7 +80,7 @@ object ChatApp extends ZIOAppDefault {
     Method.GET / "hello" / string("name") / "greet" -> handler { (name: String, _: Request) =>
       Response.text(s"Welcome to the ZIO party! ${name}")
     }
-  ).toHttpApp @@ bearerAuth(jwtDecode(_).isDefined)
+  ).toHttpApp @@ bearerAuth(jwtValidate(_))
 
   val app: HttpApp[Any] = user
 

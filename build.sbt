@@ -11,8 +11,10 @@ lazy val testContainersVersion = "1.19.0"
 lazy val testContainersScalaVersion = "0.41.0"
 lazy val ZioTestContainersVersion = "0.10.0"
 lazy val jwtCoreVersion = "9.4.4"
+lazy val sttpVersion = "3.8.15"
 
 lazy val generalDeps = Seq(
+  "com.softwaremill.sttp.client3" %% "zio-json" % sttpVersion,
   "dev.zio" %% "zio-aws-cognitosync" % zioAWSVersion,
   "dev.zio" %% "zio-aws-core" % zioAWSVersion,
   "dev.zio" %% "zio-aws-dynamodb" % zioAWSVersion,
