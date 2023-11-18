@@ -1,7 +1,8 @@
 package com.conversa.auth
 
-import zio.http.*
+import sttp.model.Uri
+import zio.*
 
 trait Auth {
-  def validateToken(token: String): HandlerAspect[Any, Unit]
+  def validateJwtToken(token: String, jwksUrl: Uri): Task[Boolean]
 }
