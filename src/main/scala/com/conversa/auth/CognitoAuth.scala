@@ -1,5 +1,7 @@
 package com.conversa.auth
 
+import com.conversa.auth.helpers.JWKSetFetcher
+import com.conversa.auth.models.*
 import java.math.BigInteger
 import java.security.spec.RSAPublicKeySpec
 import java.security.{KeyFactory, PublicKey}
@@ -10,15 +12,11 @@ import sttp.client3.ziojson.asJson
 import sttp.model.Uri
 import zio.*
 import zio.json.*
+import com.conversa.config.OAuthConfig
 
-final case class JwtValidator(sttpBackend: SttpBackend[Task, Any]) extends Auth {
+final case class JwtValidator(jwkSet: JWKSet) extends Auth {
   def decodeBase64Url(str: String): BigInteger = {
     new BigInteger(1, Base64.getUrlDecoder.decode(str))
-  }
-
-  def fetchJwks(uri: Uri): Task[JWKSet] = {
-    val request = basicRequest.response(asStringAlways).get(uri).response(asJson[JWKSet])
-    sttpBackend.send(request).flatMap(result => ZIO.fromEither(result.body))
   }
 
   def getPublicKey(jwks: JWKSet, keyId: String): Option[PublicKey] = {
@@ -34,37 +32,42 @@ final case class JwtValidator(sttpBackend: SttpBackend[Task, Any]) extends Auth 
     Jwt.isValid(token, publicKey, Seq(JwtAlgorithm.RS256))
   }
 
-  override def validateJwtToken(token: String, jwksUrl: Uri): Task[Boolean] = {
+  override def validateJwtToken(token: String): Task[Boolean] = {
     for {
-      jwks <- fetchJwks(jwksUrl)
       decodedToken <- ZIO.fromTry(Jwt.decodeRawAll(token, JwtOptions(signature = false)))
       headerJson = decodedToken._1
       jwtHeader <- ZIO.fromEither(headerJson.fromJson[JwtHeader].left.map(new RuntimeException(_)))
-      publicKeyOpt = jwtHeader.kid.flatMap(kid => getPublicKey(jwks, kid))
+      publicKeyOpt = jwtHeader.kid.flatMap(kid => getPublicKey(jwkSet, kid))
       result = publicKeyOpt.exists(validateToken(token, _))
     } yield result
   }
 
-  case class JWK(kid: String, kty: String, alg: String, use: String, n: String, e: String)
-
-  object JWK {
-    implicit val decoder: JsonDecoder[JWK] = DeriveJsonDecoder.gen[JWK]
-  }
-
-  case class JWKSet(keys: List[JWK])
-
-  object JWKSet {
-    implicit val decoder: JsonDecoder[JWKSet] = DeriveJsonDecoder.gen[JWKSet]
-  }
-
-  case class JwtHeader(alg: String, kid: Option[String])
-
-  object JwtHeader {
-    implicit val decoder: JsonDecoder[JwtHeader] = DeriveJsonDecoder.gen[JwtHeader]
+  override def validateUsername(token: String, username: String): Task[Boolean] = {
+    for {
+      decodedToken <- ZIO.fromTry(Jwt.decodeRawAll(token, JwtOptions(signature = false)))
+      headerJson = decodedToken._1
+      jwtHeader <- ZIO.fromEither(headerJson.fromJson[JwtHeader].left.map(new RuntimeException(_)))
+      publicKeyOpt = jwtHeader.kid.flatMap(kid => getPublicKey(jwkSet, kid))
+      isValid = publicKeyOpt.exists(publicKey =>
+        Jwt.isValid(token, publicKey, Seq(JwtAlgorithm.RS256))
+      )
+      payloadJson = decodedToken._2
+      cognitoUsername <- ZIO
+        .fromEither(payloadJson.fromJson[JwtPayload].left.map(new RuntimeException(_)))
+        .map(_.username)
+    } yield isValid && cognitoUsername == username
   }
 }
 
 object JwtValidator {
-  val live: ZLayer[SttpBackend[Task, Any], Any, JwtValidator] =
-    ZLayer.fromFunction(new JwtValidator(_))
+  val live = ZLayer.scoped {
+    for {
+      jwkSetFetcher <- ZIO.service[JWKSetFetcher]
+      config <- ZIO
+        .config[OAuthConfig](OAuthConfig.config)
+        .orDieWith(e => new Throwable(e.getMessage))
+      jwksUrl <- ZIO.fromEither(Uri.parse(config.jwksUrl)).orDieWith(e => new Throwable(e))
+      jwks <- jwkSetFetcher.fetchJwks(jwksUrl)
+    } yield JwtValidator(jwks)
+  }
 }

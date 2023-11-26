@@ -1,4 +1,5 @@
 import NativePackagerHelper._
+import sbt.Keys.resourceDirectory
 
 lazy val scala3Version = "3.3.1"
 lazy val shardCakeVersion = "2.1.1" // "2.1.0+8-9094a08a-SNAPSHOT"

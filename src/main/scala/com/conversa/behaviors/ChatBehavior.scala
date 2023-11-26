@@ -81,7 +81,7 @@ object ChatBehavior {
               else if (members.size >= maxNumberOfMembers)
                 replier.reply(
                   Left(
-                    ChatError.ChatFull("You can no longer join this Match!", maxNumberOfMembers)
+                    ChatError.ChatFull("You can no longer join this conversation!", maxNumberOfMembers)
                   )
                 )
               else

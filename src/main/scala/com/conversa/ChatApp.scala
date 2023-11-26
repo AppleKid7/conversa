@@ -1,6 +1,7 @@
 package com.conversa
 
 import com.conversa.auth.{Auth, JwtValidator}
+import com.conversa.auth.helpers.JWKSetFetcher
 import com.conversa.behaviors.ChatBehavior.*
 import com.conversa.behaviors.ChatBehavior.ChatCommand.*
 import com.conversa.config.OAuthConfig
@@ -25,11 +26,7 @@ object ChatApp extends ZIOAppDefault {
   private def jwtValidate(token: String): URIO[Auth, Boolean] =
     for {
       validator <- ZIO.service[Auth]
-      config <- ZIO
-        .config[OAuthConfig](OAuthConfig.config)
-        .orDieWith(e => new Throwable(e.getMessage))
-      jwksUrl <- ZIO.fromEither(Uri.parse(config.jwksUrl)).orDieWith(e => new Throwable(e))
-      result <- validator.validateJwtToken(token, jwksUrl).orDie
+      result <- validator.validateJwtToken(token).orDie
     } yield result
 
   override val bootstrap: ZLayer[ZIOAppArgs, Any, Any] =
@@ -121,6 +118,7 @@ object ChatApp extends ZIOAppDefault {
     .serve(app)
     .provide(
       zio.http.Server.default,
-      ZLayer.make[JwtValidator](JwtValidator.live, HttpClientZioBackend.layer())
+      ZLayer.make[JWKSetFetcher](JWKSetFetcher.live, HttpClientZioBackend.layer()),
+      JwtValidator.live
     )
 }
