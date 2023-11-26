@@ -1,17 +1,20 @@
 import NativePackagerHelper._
 
-lazy val scala3Version = "3.3.0"
-lazy val shardCakeVersion = "2.1.0" // "2.0.6"
-lazy val zioVersion = "2.0.15" // 2.0.12
-lazy val zioAWSVersion = "6.20.103.1"
+lazy val scala3Version = "3.3.1"
+lazy val shardCakeVersion = "2.1.1" // "2.1.0+8-9094a08a-SNAPSHOT"
+lazy val zioVersion = "2.0.18" // 2.0.12
+lazy val zioAWSVersion = "6.20.149.1"
 lazy val zioConfigVersion = "4.0.0-RC16"
-lazy val zioHttpVersion = "3.0.0-RC2" // 3.0.0-RC1
+lazy val zioHttpVersion = "3.0.0-RC2" // "3.0.0-RC3+12-93d8229b-SNAPSHOT" // "3.0.0-RC3"
 lazy val zioJsonVersion = "0.5.0"
 lazy val testContainersVersion = "1.19.0"
 lazy val testContainersScalaVersion = "0.41.0"
 lazy val ZioTestContainersVersion = "0.10.0"
+lazy val jwtCoreVersion = "9.4.4"
+lazy val sttpVersion = "3.8.15"
 
 lazy val generalDeps = Seq(
+  "com.softwaremill.sttp.client3" %% "zio-json" % sttpVersion,
   "dev.zio" %% "zio-aws-cognitosync" % zioAWSVersion,
   "dev.zio" %% "zio-aws-core" % zioAWSVersion,
   "dev.zio" %% "zio-aws-dynamodb" % zioAWSVersion,
@@ -23,8 +26,10 @@ lazy val generalDeps = Seq(
   "dev.zio" %% "zio-config-typesafe" % zioConfigVersion,
   "dev.zio" %% "zio-config-magnolia" % zioConfigVersion,
   "dev.zio" %% "zio" % zioVersion,
+  "com.github.jwt-scala" % "jwt-core_3" % jwtCoreVersion,
   "dev.zio" %% "zio-test" % zioVersion % Test,
-  "dev.zio" %% "zio-test-sbt" % zioVersion % Test
+  "dev.zio" %% "zio-test-sbt" % zioVersion % Test,
+  "dev.zio" %% "zio-http" % zioHttpVersion,
 )
 
 lazy val shardcakeDeps = Seq(
@@ -74,5 +79,5 @@ lazy val root = project
       generalDeps,
       shardcakeDeps,
       testingDeps
-    ).flatten
+    ).flatten,
   )

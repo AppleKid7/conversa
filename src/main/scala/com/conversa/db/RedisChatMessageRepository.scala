@@ -44,12 +44,6 @@ final case class RedisChatMessageRepository(
     ZStream.fromIterableZIO(
       redis.lRange(s"$conversationId:members", 0, -1).map(_.toSet).orDie
     )
-
-  override def createUser(userId: String, encryptedPassword: String): Task[Unit] =
-    redis.set(s"users:$userId", encryptedPassword)
-
-  override def getUserPassword(userId: String): Task[Option[String]] =
-    redis.get(s"users:$userId")
 }
 object RedisChatMessageRepository {
   val live = ZLayer.scoped {

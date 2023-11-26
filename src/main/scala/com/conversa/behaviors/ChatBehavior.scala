@@ -39,15 +39,6 @@ object ChatBehavior {
         content: String,
         replier: Replier[Either[ChatError, String]]
     )
-    case CreateUser(
-        userId: String,
-        password: String,
-        replier: Replier[Either[ChatError, Unit]]
-    )
-    case GetUser(
-        userId: String,
-        replier: Replier[Either[ChatError, String]]
-    )
     case Terminate(p: Promise[Nothing, Unit])
   }
 
@@ -72,8 +63,14 @@ object ChatBehavior {
   ): RIO[Sharding, Unit] =
     message match {
       case ChatCommand.CreateConversation(replier) =>
-        repo.createConversation(conversationId)
-          *> replier.reply(Right(()))
+        repo.entityExists(conversationId, "conversations").flatMap { conversationExists =>
+          if (conversationExists)
+            replier
+              .reply(Left(ChatError.InvalidConversationId("This conversation already exists.")))
+          else
+            repo.createConversation(conversationId)
+              *> replier.reply(Right(()))
+        }
       case ChatCommand.JoinConversation(memberId, maxNumberOfMembers, replier) =>
         repo.entityExists(conversationId, "conversations").flatMap { conversationExists =>
           if (conversationExists) {
@@ -144,22 +141,6 @@ object ChatBehavior {
           sendResult <- replier.reply(result)
         } yield sendResult
       }
-      case ChatCommand.CreateUser(sender, password, replier) =>
-        repo.entityExists(sender, "users").flatMap { userExists =>
-          if (userExists)
-            replier.reply(Left(ChatError.InvalidUserId(s"invalid username $sender")))
-          else
-            repo.createUser(sender, password) *> replier.reply(Right(()))
-        }
-      case ChatCommand.GetUser(sender, replier) =>
-        repo.getUserPassword(sender).flatMap { password =>
-          password match {
-            case Some(password) =>
-              replier.reply(Right(password))
-            case None =>
-              replier.reply(Left(ChatError.InvalidUserId(s"user $sender not found")))
-          }
-        }
       case ChatCommand.Terminate(p) => p.succeed(()) *> ZIO.interrupt
     }
 }
