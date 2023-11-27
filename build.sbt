@@ -17,6 +17,7 @@ lazy val sttpVersion = "3.8.15"
 lazy val generalDeps = Seq(
   "com.softwaremill.sttp.client3" %% "zio-json" % sttpVersion,
   "dev.zio" %% "zio-aws-cognitosync" % zioAWSVersion,
+  "dev.zio" %% "zio-aws-cognitoidentityprovider" % zioAWSVersion,
   "dev.zio" %% "zio-aws-core" % zioAWSVersion,
   "dev.zio" %% "zio-aws-dynamodb" % zioAWSVersion,
   "dev.zio" %% "zio-aws-netty" % zioAWSVersion,

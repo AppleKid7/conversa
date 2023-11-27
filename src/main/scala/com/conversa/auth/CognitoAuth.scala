@@ -15,11 +15,11 @@ import zio.json.*
 import com.conversa.config.OAuthConfig
 
 final case class JwtValidator(jwkSet: JWKSet) extends Auth {
-  def decodeBase64Url(str: String): BigInteger = {
+  private def decodeBase64Url(str: String): BigInteger = {
     new BigInteger(1, Base64.getUrlDecoder.decode(str))
   }
 
-  def getPublicKey(jwks: JWKSet, keyId: String): Option[PublicKey] = {
+  private def getPublicKey(jwks: JWKSet, keyId: String): Option[PublicKey] = {
     jwks.keys.find(_.kid == keyId).map { jwk =>
       val modulus = decodeBase64Url(jwk.n)
       val exponent = decodeBase64Url(jwk.e)
@@ -28,7 +28,7 @@ final case class JwtValidator(jwkSet: JWKSet) extends Auth {
     }
   }
 
-  def validateToken(token: String, publicKey: PublicKey): Boolean = {
+  private def validateToken(token: String, publicKey: PublicKey): Boolean = {
     Jwt.isValid(token, publicKey, Seq(JwtAlgorithm.RS256))
   }
 
@@ -42,7 +42,7 @@ final case class JwtValidator(jwkSet: JWKSet) extends Auth {
     } yield result
   }
 
-  override def validateUsername(token: String, username: String): Task[Boolean] = {
+  override def validateUsernameFromToken(token: String, username: String): Task[Boolean] = {
     for {
       decodedToken <- ZIO.fromTry(Jwt.decodeRawAll(token, JwtOptions(signature = false)))
       headerJson = decodedToken._1

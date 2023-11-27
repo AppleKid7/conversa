@@ -91,7 +91,12 @@ object ChatApp extends ZIOAppDefault {
       Response.text(s"Welcome to the ZIO party! ${name}")
   } @@ bearerAuthZIO(jwtValidate(_))
 
-  val app: HttpApp[Auth, Nothing] = user
+  def api: HttpApp[Auth, Nothing] = Http.collectZIO[Request] {
+    case Method.GET -> Root / "user" / name / "invite" =>
+      ZIO.succeed(Response.text(s"Welcome to the ZIO party! ${name}"))
+  } @@ bearerAuthZIO(jwtValidate(_))
+
+  val app: HttpApp[Auth, Nothing] = user ++ api
 
   // def run: Task[Unit] = ZIO.config[ChatConfig](ChatConfig.config).flatMap { chatConfig =>
   //   ZIO

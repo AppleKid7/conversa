@@ -5,5 +5,5 @@ import zio.*
 
 trait Auth {
   def validateJwtToken(token: String): Task[Boolean]
-  def validateUsername(token: String, username: String): Task[Boolean]
+  def validateUsernameFromToken(token: String, username: String): Task[Boolean]
 }
